@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAAD — Web Application Attack Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0A0E13;
+    --panel:#10161D;
+    --panel-2:#141B23;
+    --border:#212B35;
+    --text:#DDE6EE;
+    --muted:#6E7C89;
+    --brand:#4C8DFF;
+    --critical:#FF4757;
+    --high:#FF8A3D;
+    --medium:#FFC93D;
+    --low:#2FD98A;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(76,141,255,0.07), transparent 40%),
+      radial-gradient(circle at 85% 15%, rgba(255,71,87,0.05), transparent 40%);
+  }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 28px; border-bottom:1px solid var(--border);
+    background:rgba(16,22,29,0.8); backdrop-filter:blur(6px);
+    position:sticky; top:0; z-index:10;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{
+    width:34px; height:34px; border-radius:8px;
+    background:linear-gradient(135deg, var(--brand), #1e3a8a);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-weight:700; font-size:14px; color:#fff;
+    box-shadow:0 0 18px rgba(76,141,255,0.35);
+  }
+  .brand-text .title{font-weight:600; font-size:15px; letter-spacing:0.02em;}
+  .brand-text .subtitle{font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:0.04em;}
+
+  .live-pill{
+    display:flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:12px; color:var(--low);
+    padding:6px 12px; border:1px solid rgba(47,217,138,0.3); border-radius:20px;
+    background:rgba(47,217,138,0.06);
+  }
+  .live-dot{
+    width:7px; height:7px; border-radius:50%; background:var(--low);
+    box-shadow:0 0 8px var(--low);
+    animation:pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1; transform:scale(1);}
+    50%{opacity:0.4; transform:scale(0.8);}
+  }
+  @media (prefers-reduced-motion: reduce){ .live-dot{animation:none;} }
+
+  .wrap{max-width:1360px; margin:0 auto; padding:26px 28px 60px;}
+
+  .cards{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:22px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:18px 20px; position:relative; overflow:hidden;
+  }
+  .card::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  }
+  .card.total::before{background:var(--brand);}
+  .card.attacks::before{background:var(--critical);}
+  .card.risk::before{background:var(--high);}
+  .card.normal::before{background:var(--low);}
+  .card .label{font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase;}
+  .card .value{font-family:var(--mono); font-size:32px; font-weight:600; margin:8px 0 4px; line-height:1;}
+  .card.attacks .value{color:var(--critical);}
+  .card.risk .value{color:var(--high);}
+  .card.normal .value{color:var(--low);}
+  .card .sub{font-size:12px; color:var(--muted);}
+
+  .grid-charts{
+    display:grid; grid-template-columns:1fr 1.3fr 1fr; gap:16px; margin-bottom:22px;
+  }
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+  }
+  .panel h3{
+    margin:0 0 14px; font-size:13px; font-weight:600; letter-spacing:0.03em;
+    color:var(--text); text-transform:uppercase; font-family:var(--mono);
+  }
+  .chart-box{position:relative; height:200px;}
+
+  .legend-row{display:flex; flex-direction:column; gap:8px; margin-top:12px; font-family:var(--mono); font-size:12px;}
+  .legend-item{display:flex; align-items:center; justify-content:space-between; color:var(--muted);}
+  .legend-item .dot{width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:8px;}
+  .legend-item span.val{color:var(--text); font-weight:600;}
+
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px;}
+  thead th{
+    text-align:left; padding:10px 12px; color:var(--muted); font-weight:500;
+    border-bottom:1px solid var(--border); text-transform:uppercase; font-size:10.5px; letter-spacing:0.05em;
+  }
+  tbody td{padding:10px 12px; border-bottom:1px solid rgba(33,43,53,0.6); white-space:nowrap;}
+  tbody tr:hover{background:rgba(76,141,255,0.04);}
+  .badge{
+    padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:0.02em;
+  }
+  .badge.Normal{color:var(--low); background:rgba(47,217,138,0.12); border:1px solid rgba(47,217,138,0.3);}
+  .badge.Malicious{color:var(--critical); background:rgba(255,71,87,0.12); border:1px solid rgba(255,71,87,0.3);}
+  .risk-badge{font-weight:600;}
+  .risk-badge.Low{color:var(--low);}
+  .risk-badge.Medium{color:var(--medium);}
+  .risk-badge.High{color:var(--high);}
+  .risk-badge.Critical{color:var(--critical);}
+
+  .table-wrap{overflow-x:auto;}
+  .footer-note{
+    text-align:center; margin-top:30px; font-family:var(--mono); font-size:11px; color:var(--muted);
+  }
+  .src{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">W</div>
+    <div class="brand-text">
+      <div class="title">WAAD Console</div>
+      <div class="subtitle">WEB APPLICATION ATTACK DETECTION</div>
+    </div>
+  </div>
+  <div class="live-pill"><span class="live-dot"></span> LIVE · REFRESHING</div>
+</div>
+
+<div class="wrap">
+
+  <div class="cards">
+    <div class="card total">
+      <div class="label">Total Requests</div>
+      <div class="value" id="total-requests">—</div>
+      <div class="sub">All HTTP requests logged</div>
+    </div>
+    <div class="card attacks">
+      <div class="label">Total Attacks</div>
+      <div class="value" id="total-attacks">—</div>
+      <div class="sub">Malicious requests detected</div>
+    </div>
+    <div class="card risk">
+      <div class="label">Risk Level</div>
+      <div class="value" id="risk-level" style="font-size:24px;">—</div>
+      <div class="sub">Current overall risk status</div>
+    </div>
+    <div class="card normal">
+      <div class="label">Normal Requests</div>
+      <div class="value" id="normal-requests">—</div>
+      <div class="sub">Legitimate traffic</div>
+    </div>
+  </div>
+
+  <div class="grid-charts">
+    <div class="panel">
+      <h3>Attack Distribution</h3>
+      <div class="chart-box"><canvas id="attackDonut"></canvas></div>
+      <div class="legend-row" id="attack-legend"></div>
+    </div>
+    <div class="panel">
+      <h3>Daily Attacks</h3>
+      <div class="chart-box"><canvas id="dailyLine"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Risk Level Analysis</h3>
+      <div class="chart-box"><canvas id="riskDonut"></canvas></div>
+      <div class="legend-row" id="risk-legend"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Recent Attacks &amp; Requests</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Date &amp; Time</th><th>Source IP</th><th>Requested URL</th>
+            <th>Method</th><th>Status</th><th>Attack Type</th><th>Risk Level</th><th>Prediction</th>
+          </tr>
+        </thead>
+        <tbody id="log-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Web Application Attack Detection Using Log Analysis &amp; Machine Learning
+    <div class="src" id="source-file"></div>
+  </div>
+
+</div>
+
+<script>
+const REFRESH_MS = {{ refresh_seconds * 1000 }};
+const COLORS = { sqli: '#FF4757', xss: '#4C8DFF', brute: '#FFC93D',
+                 critical:'#FF4757', high:'#FF8A3D', medium:'#FFC93D', low:'#2FD98A' };
+
+let attackDonut, riskDonut, dailyLine;
+
+function initCharts(){
+  const donutOpts = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false} },
+    cutout:'68%'
+  };
+  attackDonut = new Chart(document.getElementById('attackDonut'), {
+    type:'doughnut',
+    data:{ labels:['SQL Injection','XSS','Brute Force'],
+      datasets:[{ data:[0,0,0], backgroundColor:[COLORS.sqli, COLORS.xss, COLORS.brute], borderWidth:0 }] },
+    options: donutOpts
+  });
+  riskDonut = new Chart(document.getElementById('riskDonut'), {
+    type:'doughnut',
+    data:{ labels:['Critical','High','Medium','Low'],
+      datasets:[{ data:[0,0,0,0], backgroundColor:[COLORS.critical, COLORS.high, COLORS.medium, COLORS.low], borderWidth:0 }] },
+    options: donutOpts
+  });
+  dailyLine = new Chart(document.getElementById('dailyLine'), {
+    type:'line',
+    data:{ labels:[], datasets:[{
+      label:'Attacks', data:[], borderColor:'#FF4757', backgroundColor:'rgba(255,71,87,0.12)',
+      tension:0.35, fill:true, pointRadius:3, pointBackgroundColor:'#FF4757'
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{color:'#6E7C89', font:{family:'IBM Plex Mono', size:10}}, grid:{color:'rgba(33,43,53,0.5)'} },
+        y:{ beginAtZero:true, ticks:{color:'#6E7C89', font:{family:'IBM Plex Mono', size:10}}, grid:{color:'rgba(33,43,53,0.5)'} }
+      }
+    }
+  });
+}
+
+function legendHTML(items){
+  return items.map(i =>
+    `<div class="legend-item"><span><span class="dot" style="background:${i.color}"></span>${i.label}</span><span class="val">${i.value}</span></div>`
+  ).join('');
+}
+
+async function refresh(){
+  const res = await fetch('/api/stats');
+  const d = await res.json();
+
+  document.getElementById('total-requests').textContent = d.total_requests.toLocaleString();
+  document.getElementById('total-attacks').textContent = d.total_attacks.toLocaleString();
+  document.getElementById('normal-requests').textContent = d.normal_requests.toLocaleString();
+  const riskEl = document.getElementById('risk-level');
+  riskEl.textContent = d.overall_risk.toUpperCase();
+  riskEl.style.color = {Critical:COLORS.critical, High:COLORS.high, Medium:COLORS.medium, Low:COLORS.low}[d.overall_risk];
+
+  attackDonut.data.datasets[0].data = [d.attack_counts['SQL Injection'], d.attack_counts['XSS'], d.attack_counts['Brute Force']];
+  attackDonut.update();
+  document.getElementById('attack-legend').innerHTML = legendHTML([
+    {label:'SQL Injection', value:d.attack_counts['SQL Injection'], color:COLORS.sqli},
+    {label:'XSS', value:d.attack_counts['XSS'], color:COLORS.xss},
+    {label:'Brute Force', value:d.attack_counts['Brute Force'], color:COLORS.brute},
+  ]);
+
+  riskDonut.data.datasets[0].data = [d.risk_counts.Critical, d.risk_counts.High, d.risk_counts.Medium, d.risk_counts.Low];
+  riskDonut.update();
+  document.getElementById('risk-legend').innerHTML = legendHTML([
+    {label:'Critical', value:d.risk_counts.Critical, color:COLORS.critical},
+    {label:'High', value:d.risk_counts.High, color:COLORS.high},
+    {label:'Medium', value:d.risk_counts.Medium, color:COLORS.medium},
+    {label:'Low', value:d.risk_counts.Low, color:COLORS.low},
+  ]);
+
+  dailyLine.data.labels = d.daily_labels;
+  dailyLine.data.datasets[0].data = d.daily_values;
+  dailyLine.update();
+
+  const tbody = document.getElementById('log-table-body');
+  tbody.innerHTML = d.recent_logs.map((r, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${r.timestamp}</td>
+      <td>${r.ip}</td>
+      <td title="${r.url}">${r.url.length > 42 ? r.url.slice(0,42)+'…' : r.url}</td>
+      <td>${r.method}</td>
+      <td>${r.status}</td>
+      <td>${r.attack_type === 'None' ? '—' : r.attack_type}</td>
+      <td><span class="risk-badge ${r.risk_level}">${r.risk_level}</span></td>
+      <td><span class="badge ${r.prediction}">${r.prediction}</span></td>
+    </tr>
+  `).join('');
+
+  document.getElementById('source-file').textContent = 'Source: ' + d.source_file;
+}
+
+initCharts();
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
